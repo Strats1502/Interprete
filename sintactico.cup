@@ -1,0 +1,937 @@
+import java.io.*;
+import java_cup.runtime.*;
+
+parser code {:
+    public static void main(String args[]) throws Exception {
+        new parser(new Yylex(new InputStreamReader(System.in))).parse();
+    }
+
+    public void syntax_error(Symbol s) {
+        report_error("Error de sintaxis linea: " + Integer.toString(Yylex.line + 1) +
+        " columna: " + Integer.toString(Yylex.pos + 1) + "En \"" + s.value + "\"", null);
+    }
+    
+:}
+
+action code {:
+    int integer = 1;
+    int TYPEINT_VARIABLE = 1;
+    int TYPEBOOLEAN_VARIABLE = 2;
+    VariableList variableList = new VariableList();
+:}
+
+terminal NOT, AND, OR, UNEQUALS, EQUALS, LESSEQUALS, HIGHEREQUALS, LESS, HIGHER;
+terminal ID, ASSIGN, SEMI, LPAREN, RPAREN;
+terminal Boolean TRUE, FALSE;
+terminal TYPEINT, TYPEBOOLEAN;
+terminal Integer NUMBER, PLUS, MINUS,DIVIDE, TIMES;
+terminal PUNTO;
+
+non terminal kick_off,expression_list, assignment_list;
+non terminal Integer operation;
+non terminal Boolean operation_logic, operation_relationship;
+
+precedence left OR;
+precedence left AND;
+precedence left EQUALS, UNEQUALS;
+precedence left LESS, HIGHER, LESSEQUALS, HIGHEREQUALS;
+precedence left PLUS, MINUS;
+precedence left TIMES, DIVIDE;
+precedence left NOT;
+precedence left LPAREN, RPAREN;
+
+kick_off::= expression_list;
+
+expression_list::= assignment_list operation:value {: if (value != null)  System.out.println(value.intValue()); :} SEMI expression_list
+                | assignment_list ID:id {: 
+                    String name = id.toString();
+                    
+                    if(variableList.exists(name)) {
+                        Variable variable = variableList.getVariable(name);
+                        int typeVariable = variable.getType();
+                        if (typeVariable == TYPEINT_VARIABLE) {
+                            int value = ((Int) variable.getValue()).getValue();
+                            System.out.println(value);
+                        } if(typeVariable == TYPEBOOLEAN_VARIABLE) {
+                            boolean value = ((Bool) variable.getValue()).getValue();
+                            System.out.println(value);
+                        }
+                    } else {
+                        Errors.variableNotInstantiated(name);
+                    }                                            
+                :} SEMI expression_list
+                |;
+
+assignment_list::= 
+                TYPEINT ID:id ASSIGN operation:value {: 
+                        if(value != null) {
+                            Int valor = new Int(value.intValue());
+                            Variable<Int> variable = new Variable<Int>(1, id.toString(), valor);
+                            variableList.addVariable(variable);
+                        }
+                    :} SEMI assignment_list
+                | TYPEINT ID:id1 ASSIGN ID:id2  {:
+                    String name1 = id1.toString();
+                    String name2 = id2.toString();
+
+                    if(variableList.exists(name2)) {
+                        Variable variableThatExists = variableList.getVariable(name2);
+                        int typeVariable = variableThatExists.getType();
+                        if(typeVariable == TYPEINT_VARIABLE) {
+                            Int value = new Int(((Int) variableThatExists.getValue()).getValue());
+                            Variable<Int> variable = new Variable<Int>(TYPEINT_VARIABLE, id1.toString(), value);
+                            variableList.addVariable(variable);
+                        } else {
+                            Errors.variableTypeIncompatible(name2);
+                        }
+                    } else {
+                        Errors.variableNotInstantiated(name2);
+                    }
+                :} SEMI assignment_list
+                | TYPEBOOLEAN ID:id ASSIGN operation_relationship:value {:
+                    if(value != null) {
+                        Bool valor = new Bool(value.booleanValue());
+                        Variable<Bool> variable = new Variable<Bool>(2, id.toString(), valor);
+                        variableList.addVariable(variable);
+                    }
+                :} SEMI assignment_list
+                | TYPEBOOLEAN ID:id ASSIGN operation_logic:value {:
+                    if(value != null) {
+                        Bool valor = new Bool(value.booleanValue());
+                        Variable<Bool> variable = new Variable<Bool>(2, id.toString(), valor);
+                        variableList.addVariable(variable);
+                    }
+                :} SEMI assignment_list
+                | TYPEBOOLEAN ID:id1 ASSIGN ID:id2 {:
+                    String name1 = id1.toString();
+                    String name2 = id2.toString();
+
+                    if(variableList.exists(name2)) {
+                        Variable variableThatExists = variableList.getVariable(name2);
+                        int typeVariable = variableThatExists.getType();
+
+                        if(typeVariable == TYPEBOOLEAN_VARIABLE) {
+                            Bool value = new Bool(((Bool) variableThatExists.getValue()).getValue());
+                            Variable<Bool> variable = new Variable<Bool>(TYPEBOOLEAN_VARIABLE, id1.toString(), value);
+                            variableList.addVariable(variable);
+                        } else {
+                            Errors.variableTypeIncompatible(name2);
+                        }
+                    } else {
+                        Errors.variableNotInstantiated(name2);
+                    }
+                :} SEMI assignment_list
+                | ;
+
+operation::= 
+            NUMBER:number {: int value = number; RESULT = new Integer(value); :}
+            //normal sum, example: 2+2;
+            | operation:part1 PLUS operation:part2  {: 
+                if(part1 != null && part2 != null) { 
+                    int value1 = part1;
+                    int value2 = part2;
+                    int value = value1 + value2;
+                    RESULT = new Integer(value); 
+                }
+            :}
+            //sum with id to left, example: variableName + 10;
+            | ID:id PLUS operation:part1 {:
+                String name = id.toString();
+
+                if(variableList.exists(name)) {
+                    Variable variable = variableList.getVariable(name);
+                    int typeVariable = variable.getType();
+
+                    if (typeVariable == 1) {
+                        int value = ((Int) variable.getValue()).getValue() + part1.intValue();
+                        RESULT = new Integer(value);
+                    } else {
+                        System.out.println(name + " no es de tipo númerico");
+                    }
+                } else {
+                    System.out.println(name + " no ha sido inicializada");
+                }
+            :}
+            //sum with id to right, example: 10 + variableName;
+            | operation:part1 PLUS ID:id {:
+                                            String name = id.toString();
+                                            if(variableList.exists(name)) {
+                                                if(part1 != null) {
+                                                    Variable variable = variableList.getVariable(name);
+                                                    int typeVariable = variable.getType();
+                                                    if (typeVariable == 1) {
+                                                        int value = part1 + ((Int) variable.getValue()).getValue();
+                                                        RESULT = new Integer(value);
+                                                    } else {
+                                                            System.out.println(name + " no es de tipo númerico");
+                                                        }
+                                                    } else {
+                                                        System.out.println("Suma no valida");
+                                                    }
+                                            } else {
+                                                    System.out.println(name + " no ha sido inicializada");
+                                            }
+                                        :}
+            //sum between two ids, example: variableName1 + variableName2;
+            | ID:id1 PLUS ID:id2 {:
+                                    String name1 = id1.toString();
+                                    String name2 = id2.toString();
+                                    if(variableList.exists(name1)){
+                                        if(variableList.exists(name2)) {
+                                            Variable variable1 = variableList.getVariable(name1);
+                                            Variable variable2 = variableList.getVariable(name2);
+                                            int typeVariable1 = variable1.getType();
+                                            int typeVariable2 = variable2.getType();
+                                            if(typeVariable1 == 1) {
+                                                if(typeVariable2 == 1) {
+                                                    int value1 = ((Int) variable1.getValue()).getValue();
+                                                    int value2 = ((Int) variable2.getValue()).getValue();
+                                                    int value = value1 + value2;
+                                                    RESULT = new Integer(value);
+                                                } else {
+                                                    System.out.println(name2 + " no es de tipo númerico");
+                                                }
+                                            } else {
+                                                System.out.println(name1 + " no es de tipo númerico");
+                                            }
+                                        } else {
+                                            System.out.println(name2 + " no ha sido inicializada");
+                                        }
+                                    } else {
+                                        System.out.println(name1 + " no ha sido inicializada");
+                                    }
+                                :}
+            //normal subtraction, example: 10-5;
+            | operation:part1 MINUS operation:part2 {: if(part1 != null && part2 != null) RESULT = new Integer(part1.intValue() - part2.intValue()); :}
+            //subtraction with id to left, example: variableName - 50;
+            | ID:id MINUS operation:part1 {:
+                String name = id.toString();
+                if(variableList.exists(name)) {
+                    if(part1 != null) {
+                        Variable variable = variableList.getVariable(name);
+                        int typeVariable = variable.getType();
+                        if(typeVariable == 1) {
+                            int value = ((Int) variable.getValue()).getValue() - part1;
+                            RESULT = new Integer(value);
+                        } else {
+                            System.out.println(name + " no es de tipo númerico");
+                        }
+                    } else {
+                        System.out.println("Resta no valida");
+                    }
+                } else {
+                    System.out.println(name + " no ha sido inicializada");
+                }
+            :}
+            //subtraction with id to right, example: 50 - variableName;
+            | operation:part1 MINUS ID:id {:
+                String name = id.toString();
+                if(variableList.exists(name)) {
+                        Variable variable = variableList.getVariable(name);
+                        int typeVariable = variable.getType();
+                        if(typeVariable == TYPEINT_VARIABLE) {
+                            int value = part1 - ((Int) variable.getValue()).getValue();
+                            RESULT = new Integer(value);
+                        } else {
+                            Errors.variableTypeIncompatible(name);
+                        }
+                } else {
+                    Errors.variableNotInstantiated(name);
+                }
+            :}
+            //subtraction between two ids, example: variableName1 - variableName2;
+            | ID:id1 MINUS ID:id2 {:
+                String name1 = id1.toString();
+                String name2 = id2.toString();
+                if(variableList.exists(name1)) {
+                    if(variableList.exists(name2)) {
+                        Variable variable1 = variableList.getVariable(name1);
+                        Variable variable2 = variableList.getVariable(name2);
+                        int typeVariable1 = variable1.getType();
+                        int typeVariable2 = variable2.getType();
+
+                        if(typeVariable1 == TYPEINT_VARIABLE) {
+                            if(typeVariable2 == TYPEINT_VARIABLE) {
+                                int value1 = ((Int) variable1.getValue()).getValue();
+                                int value2 = ((Int) variable2.getValue()).getValue();
+                                int value = value1 - value2;
+                                RESULT = new Integer(value);
+                            } else {
+                                Errors.variableTypeIncompatible(name2);
+                            }
+                        } else {
+                            Errors.variableTypeIncompatible(name1);
+                        }
+                    } else {
+                        Errors.variableNotInstantiated(name2);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name1);
+                }
+            :}
+            //normal multiplication, example: 2*2;
+            | operation:part1 TIMES operation:part2 {: if(part1 != null && part2 != null) RESULT = new Integer(part1.intValue() * part2.intValue()); :}
+            //multiplication with id to left, example: variableName * 10;
+            | ID:id TIMES operation:part1 {:
+                String name = id.toString();
+                if(variableList.exists(name)) {
+                    Variable variable = variableList.getVariable(name);
+                    int typeVariable = variable.getType();
+
+                    if(typeVariable == TYPEINT_VARIABLE) {
+                        int variableValue = ((Int) variable.getValue()).getValue();
+                        int operationValue = part1;
+                        int value = variableValue * operationValue;
+                        RESULT = new Integer(value);
+                    } else {
+                        Errors.variableTypeIncompatible(name);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name);
+                }
+            :}
+            //multiplication with id to right, example: 10 * variableName;
+            | operation:part1 TIMES ID:id {:
+                String name = id.toString();
+                if(variableList.exists(name)) {
+                    Variable variable = variableList.getVariable(name);
+                    int typeVariable = variable.getType();
+
+                    if(typeVariable == TYPEINT_VARIABLE) {
+                        int operationValue = part1;
+                        int variableValue = ((Int) variable.getValue()).getValue();
+                        int value = operationValue * variableValue;
+                        RESULT = new Integer(value);
+                    } else {
+                        Errors.variableTypeIncompatible(name);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name);
+                }
+            :}
+            //multiplication between two ids, example: variableName1 * variableName2;
+            | ID:id1 TIMES ID:id2 {:
+                String name1 = id1.toString();
+                String name2 = id2.toString();
+                
+                if(variableList.exists(name1)) {
+                    if(variableList.exists(name2)) {
+                        Variable variable1 = variableList.getVariable(name1);
+                        Variable variable2 = variableList.getVariable(name2);
+                        int typeVariable1 = variable1.getType();
+                        int typeVariable2 = variable2.getType();
+
+                        if(typeVariable1 == TYPEINT_VARIABLE) {
+                            if(typeVariable2 == TYPEINT_VARIABLE) {
+                                int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                int value = variableValue1 * variableValue2;
+                                RESULT = new Integer(value);
+                            } else {
+                                Errors.variableTypeIncompatible(name2);
+                            }
+                        } else {
+                            Errors.variableTypeIncompatible(name1);
+                        }
+                    } else {
+                        Errors.variableNotInstantiated(name2);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name1);
+                }
+            :}
+            //normal division, example 10/5;
+            | operation:part1 DIVIDE operation:part2 {: if (part1 != null && part2 != null) RESULT = new Integer(part1.intValue() / part2.intValue()); :}
+            //division with id to left, example: variableName / 5;
+            | ID:id DIVIDE operation:part1 {:
+                String name = id.toString();
+
+                if(variableList.exists(name)) {
+                    Variable variable = variableList.getVariable(name);
+                    int typeVariable = variable.getType();
+
+                    if(typeVariable == TYPEINT_VARIABLE) {
+                        int variableValue = ((Int) variable.getValue()).getValue();
+                        int operationValue = part1;
+                        int value = variableValue / operationValue;
+                        RESULT = new Integer(value);
+                    } else {
+                        Errors.variableTypeIncompatible(name);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name);
+                }
+            :}
+            //division with id to right, example: 10 / variableName;
+            | operation:part1 DIVIDE ID:id {:
+                String name = id.toString();
+
+                if(variableList.exists(name)) {
+                    Variable variable = variableList.getVariable(name);
+                    int typeVariable = variable.getType();
+
+                    if(typeVariable == TYPEINT_VARIABLE) {
+                        int operationValue = part1;
+                        int variableValue = ((Int) variable.getValue()).getValue();
+                        int value = operationValue / variableValue;
+                        RESULT = new Integer(value);
+                    } else {
+                        Errors.variableTypeIncompatible(name);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name);
+                }
+            :}
+            //division between two ids, example: variableName1 / variableName2;
+            | ID:id1 DIVIDE ID:id2 {:
+                String name1 = id1.toString();
+                String name2 = id2.toString();
+
+                if(variableList.exists(name1)) {
+                    if(variableList.exists(name2)) {
+                        Variable variable1 = variableList.getVariable(name1);
+                        Variable variable2 = variableList.getVariable(name2);
+                        int typeVariable1 = variable1.getType();
+                        int typeVariable2 = variable2.getType();
+
+                        if(typeVariable1 == TYPEINT_VARIABLE) {
+                            if(typeVariable2 == TYPEINT_VARIABLE) {
+                                int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                int value = variableValue1 / variableValue2;
+                                RESULT = new Integer(value);
+                            } else {
+                                Errors.variableTypeIncompatible(name2);
+                            }
+                        } else {
+                            Errors.variableTypeIncompatible(name1);
+                        }
+                    } else {
+                        Errors.variableNotInstantiated(name2);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name1);
+                }
+            :}
+            //insert into parenthesis a operation
+            | LPAREN operation:part1 {: RESULT = new Integer(part1.intValue()); :} RPAREN
+            //insert into parenthesis a variable
+            | LPAREN ID:id {:
+                String name = id.toString();
+
+                if(variableList.exists(name)) {
+                    Variable variable = variableList.getVariable(name);
+                    int typeVariable = variable.getType();
+
+                    if(typeVariable == TYPEINT_VARIABLE) {
+                        int value = ((Int) variable.getValue()).getValue();
+                        RESULT = new Integer(value);
+                    } else {
+                        Errors.variableTypeIncompatible(name);
+                    }
+                } else {
+                    Errors.variableNotInstantiated(name);
+                }
+            :} RPAREN
+            //error, incomplete operation
+            | {: Errors.invalidOperation(); :};
+
+operation_relationship::=  
+                    TRUE {: RESULT = new Boolean(true); :}
+                    | FALSE {: RESULT = new Boolean(false); :}
+                    | LPAREN operation:part1 UNEQUALS operation:part2 RPAREN {:
+                        int value1 = part1.intValue();
+                        int value2 = part2.intValue();
+                        boolean unequals = value1 != value2;
+                        RESULT = new Boolean(unequals); 
+                    :}
+                    | LPAREN ID:id UNEQUALS operation:part1 RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                int operationValue = part1.intValue();
+                                boolean unequals = variableValue != operationValue;
+                                RESULT = new Boolean(unequals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN operation:part1 UNEQUALS ID:id RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int operationValue = part1.intValue();
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                boolean unequals = operationValue != variableValue;
+                                RESULT = new Boolean(unequals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN ID:id1 UNEQUALS ID:id2 RPAREN {:
+                        String name1 = id1.toString();
+                        String name2 = id2.toString();
+
+                        if(variableList.exists(name1)) {
+                            if(variableList.exists(name2)) {
+                                Variable variable1 = variableList.getVariable(name1);
+                                Variable variable2 = variableList.getVariable(name2);
+                                int typeVariable1 = variable1.getType();
+                                int typeVariable2 = variable2.getType();
+
+                                if(typeVariable1 == TYPEINT_VARIABLE) {
+                                    if(typeVariable2 == TYPEINT_VARIABLE) {
+                                        int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                        int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                        boolean unequals = variableValue1 != variableValue2;
+                                        RESULT = new Boolean(unequals);
+                                    } else {
+                                        Errors.variableTypeIncompatible(name2);
+                                    }
+                                } else {
+                                    Errors.variableTypeIncompatible(name1);
+                                }
+                            } else {
+                                Errors.variableNotInstantiated(name2);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name1);
+                        }
+                    :}
+                    | LPAREN operation:part1 EQUALS operation:part2 RPAREN {:
+                        int value1 = part1.intValue();
+                        int value2 = part2.intValue();
+                        boolean equals = value1 == value2;
+                        RESULT = new Boolean(equals);
+                    :}
+                    | LPAREN ID:id EQUALS operation:part1 RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                int operationValue = part1.intValue();
+                                boolean equals = variableValue == operationValue;
+                                RESULT = new Boolean(equals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN operation:part1 EQUALS ID:id RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int operationValue = part1.intValue();
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                boolean equals = operationValue == variableValue;
+                                RESULT = new Boolean(equals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN ID:id1 EQUALS ID:id2 RPAREN {:
+                        String name1 = id1.toString();
+                        String name2 = id2.toString();
+
+                        if(variableList.exists(name1)) {
+                            if(variableList.exists(name2)) {
+                                Variable variable1 = variableList.getVariable(name1);
+                                Variable variable2 = variableList.getVariable(name2);
+                                int typeVariable1 = variable1.getType();
+                                int typeVariable2 = variable2.getType();
+
+                                if(typeVariable1 == TYPEINT_VARIABLE) {
+                                    if(typeVariable2 == TYPEINT_VARIABLE) {
+                                        int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                        int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                        boolean equals = variableValue1 == variableValue2;
+                                        RESULT = new Boolean(equals);
+                                    } else {
+                                        Errors.variableTypeIncompatible(name2);
+                                    }
+                                } else {
+                                    Errors.variableTypeIncompatible(name1);
+                                }
+                            } else {
+                                Errors.variableNotInstantiated(name2);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name1);
+                        }
+                    :}
+                    | LPAREN operation:part1 LESSEQUALS operation:part2 RPAREN {:
+                        int value1 = part1.intValue();
+                        int value2 = part2.intValue();
+                        boolean lessequals = value1 <= value2;
+                        RESULT = new Boolean(lessequals);
+                    :}
+                    | LPAREN ID:id LESSEQUALS operation:part1 RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                int operationValue = part1.intValue();
+                                boolean lessequals = variableValue <= operationValue;
+                                RESULT = new Boolean(lessequals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN operation:part1 LESSEQUALS ID:id RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int operationValue = part1.intValue();
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                boolean lessequals = operationValue <= variableValue;
+                                RESULT = new Boolean(lessequals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN ID:id1 LESSEQUALS ID:id2 RPAREN {:
+                        String name1 = id1.toString();
+                        String name2 = id2.toString();
+
+                        if(variableList.exists(name1)) {
+                            if(variableList.exists(name2)) {
+                                Variable variable1 = variableList.getVariable(name1);
+                                Variable variable2 = variableList.getVariable(name2);
+                                int typeVariable1 = variable1.getType();
+                                int typeVariable2 = variable2.getType();
+
+                                if(typeVariable1 == TYPEINT_VARIABLE) {
+                                    if(typeVariable2 == TYPEINT_VARIABLE) {
+                                        int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                        int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                        boolean lessequals = variableValue1 <= variableValue2;
+                                        RESULT = new Boolean(lessequals);
+                                    } else {
+                                        Errors.variableTypeIncompatible(name2);
+                                    }
+                                } else {
+                                    Errors.variableTypeIncompatible(name1);
+                                }
+                            } else {
+                                Errors.variableNotInstantiated(name2);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name1);
+                        }
+                    :}
+                    | LPAREN operation:part1 HIGHEREQUALS operation:part2 RPAREN {:
+                        int value1 = part1.intValue();
+                        int value2 = part2.intValue();
+                        boolean higherequals = value1 >= value2;
+                        RESULT = new Boolean(higherequals);
+                    :}
+                    | LPAREN ID:id HIGHEREQUALS operation:part1 RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                int operationValue = part1.intValue();
+                                boolean higherequals = variableValue >= operationValue;
+                                RESULT = new Boolean(higherequals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN operation:part1 HIGHEREQUALS ID:id RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int operationValue = part1.intValue();
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                boolean higherequals = operationValue >= variableValue;
+                                RESULT = new Boolean(higherequals);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN ID:id1 HIGHEREQUALS ID:id2 RPAREN {:
+                        String name1 = id1.toString();
+                        String name2 = id2.toString();
+
+                        if(variableList.exists(name1)) {
+                            if(variableList.exists(name2)) {
+                                Variable variable1 = variableList.getVariable(name1);
+                                Variable variable2 = variableList.getVariable(name2);
+                                int typeVariable1 = variable1.getType();
+                                int typeVariable2 = variable2.getType();
+
+                                if(typeVariable1 == TYPEINT_VARIABLE) {
+                                    if(typeVariable2 == TYPEINT_VARIABLE) {
+                                        int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                        int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                        boolean higherequals = variableValue1 >= variableValue2;
+                                        RESULT = new Boolean(higherequals);
+                                    } else {
+                                        Errors.variableTypeIncompatible(name2);
+                                    }
+                                } else {
+                                    Errors.variableTypeIncompatible(name1);
+                                }
+                            } else {
+                                Errors.variableNotInstantiated(name2);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name1);
+                        }
+                    :}
+                    | LPAREN operation:part1 LESS operation:part2 RPAREN {:
+                        int value1 = part1.intValue();
+                        int value2 = part2.intValue();
+                        boolean less = value1 < value2;
+                        RESULT = new Boolean(less);
+                    :}
+                    | LPAREN ID:id LESS operation:part1 RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                int operationValue = part1.intValue();
+                                boolean less = variableValue < operationValue;
+                                RESULT = new Boolean(less);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN operation:part1 LESS ID:id RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int operationValue = part1.intValue();
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                boolean less = operationValue < variableValue;
+                                RESULT = new Boolean(less);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN ID:id1 LESS ID:id2 RPAREN {:
+                        String name1 = id1.toString();
+                        String name2 = id2.toString();
+
+                        if(variableList.exists(name1)) {
+                            if(variableList.exists(name2)) {
+                                Variable variable1 = variableList.getVariable(name1);
+                                Variable variable2 = variableList.getVariable(name2);
+                                int typeVariable1 = variable1.getType();
+                                int typeVariable2 = variable2.getType();
+
+                                if(typeVariable1 == TYPEINT_VARIABLE) {
+                                    if(typeVariable2 == TYPEINT_VARIABLE) {
+                                        int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                        int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                        boolean less = variableValue1 < variableValue2;
+                                        RESULT = new Boolean(less);
+                                    } else {
+                                        Errors.variableTypeIncompatible(name2);
+                                    }
+                                } else {
+                                    Errors.variableTypeIncompatible(name1);
+                                }
+                            } else {
+                                Errors.variableNotInstantiated(name2);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name1);
+                        }
+                    :}
+                    | LPAREN operation:part1 HIGHER operation:part2 RPAREN {:
+                        int value1 = part1.intValue();
+                        int value2 = part2.intValue();
+                        boolean higher = value1 > value2;
+                        RESULT = new Boolean(higher);
+                    :}
+                    | LPAREN ID:id HIGHER operation:part1 RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                int operationValue = part1.intValue();
+                                boolean higher = variableValue > operationValue;
+                                RESULT = new Boolean(higher);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN operation:part1 HIGHER ID:id RPAREN {:
+                        String name = id.toString();
+
+                        if(variableList.exists(name)) {
+                            Variable variable = variableList.getVariable(name);
+                            int typeVariable = variable.getType();
+
+                            if(typeVariable == TYPEINT_VARIABLE) {
+                                int operationValue = part1.intValue();
+                                int variableValue = ((Int) variable.getValue()).getValue();
+                                boolean higher = operationValue > variableValue;
+                                RESULT = new Boolean(higher);
+                            } else {
+                                Errors.variableTypeIncompatible(name);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name);
+                        }
+                    :}
+                    | LPAREN ID:id1 HIGHER ID:id2 RPAREN {:
+                        String name1 = id1.toString();
+                        String name2 = id2.toString();
+
+                        if(variableList.exists(name1)) {
+                            if(variableList.exists(name2)) {
+                                Variable variable1 = variableList.getVariable(name1);
+                                Variable variable2 = variableList.getVariable(name2);
+                                int typeVariable1 = variable1.getType();
+                                int typeVariable2 = variable2.getType();
+
+                                if(typeVariable1 == TYPEINT_VARIABLE) {
+                                    if(typeVariable2 == TYPEINT_VARIABLE) {
+                                        int variableValue1 = ((Int) variable1.getValue()).getValue();
+                                        int variableValue2 = ((Int) variable2.getValue()).getValue();
+                                        boolean higher = variableValue1 > variableValue2;
+                                        RESULT = new Boolean(higher);
+                                    } else {
+                                        Errors.variableTypeIncompatible(name2);
+                                    }
+                                } else {
+                                    Errors.variableTypeIncompatible(name1);
+                                }
+                            } else {
+                                Errors.variableNotInstantiated(name2);
+                            }
+                        } else {
+                            Errors.variableNotInstantiated(name1);
+                        }
+                    :}
+                    //error productions
+                    | operation:operation {: System.out.println("Esta intentando asignar el valor númerico: " + operation.intValue() + " a una variable booleana"); :};
+
+operation_logic::= 
+                NOT operation_relationship: part1 {: 
+                    if(part1 != null) {
+                        boolean value = !part1;
+                        RESULT = new Boolean(value);
+                    }
+                :}
+                | NOT ID:id {:
+                    String name = id.toString();
+
+                    if(variableList.exists(name)) {
+                        Variable variable = variableList.getVariable(name);
+                        int typeVariable = variable.getType();
+
+                        if(typeVariable == TYPEBOOLEAN_VARIABLE) {
+                            boolean variableValue = ((Bool) variable.getValue()).getValue();
+                            boolean newValue = !variableValue;
+                            RESULT = new Boolean(newValue);
+                        } else {
+                            Errors.variableTypeIncompatible(name);
+                        }
+                    } else {
+                        Errors.variableNotInstantiated(name);
+                    }
+                :}
+                | operation_relationship:part1 AND operation_relationship:part2 {:
+                    if(part1 != null && part2 != null) {
+                        boolean value = part1 && part2;
+                        RESULT = new Boolean(value);
+                    }
+                :}
+                | operation_relationship:part1 OR operation_relationship:part2 {:
+                    if(part1 != null && part2 != null) {
+                        boolean value = part1 || part2;
+                        RESULT = new Boolean(value);
+                    }
+                :}
+                | operation_logic:part1 AND operation_logic:part2 {:
+                    if(part1 != null && part2 != null) {
+                        boolean value = part1 && part2;
+                        RESULT = new Boolean(value);
+                    }
+                :}
+                | operation_logic:part1 OR operation_logic:part2 {:
+                    if(part1 != null && part2 != null) {
+                        boolean value = part1 || part2;
+                        RESULT = new Boolean(value);
+                    }
+                :};
